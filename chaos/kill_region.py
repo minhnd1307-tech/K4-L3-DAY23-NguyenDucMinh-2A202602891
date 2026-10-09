@@ -65,14 +65,69 @@ def is_alive(region: str, timeout=1.5) -> bool:
 
 def pid_of(region: str) -> int | None:
     f = PID_DIR / f"region-{region}.pid"
-    if not f.exists():
-        return None
-    pid = int(f.read_text().strip())
-    try:
-        os.kill(pid, 0)
-        return pid
-    except OSError:
-        return None
+    if f.exists():
+        try:
+            pid = int(f.read_text().strip())
+            os.kill(pid, 0)
+            return pid
+        except (ValueError, OSError):
+            pass
+    if os.name == "nt":
+        port = 8001 if region == "a" else 8002
+        try:
+            out = subprocess.check_output("netstat -ano -p tcp", shell=True, text=True)
+            for line in out.splitlines():
+                parts = line.split()
+                if len(parts) >= 5 and parts[0] == "TCP" and parts[3] == "LISTENING":
+                    local_addr = parts[1]
+                    if local_addr.endswith(f":{port}"):
+                        return int(parts[4])
+        except Exception:
+            pass
+    return None
+
+
+def _suspend_pid(pid: int):
+    if os.name == "nt":
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        ntdll = ctypes.windll.ntdll
+        handle = kernel32.OpenProcess(0x1F0FFF, False, pid)
+        if handle:
+            ntdll.NtSuspendProcess(handle)
+            kernel32.CloseHandle(handle)
+    else:
+        os.kill(pid, signal.SIGSTOP)
+
+
+def _resume_pid(pid: int):
+    if os.name == "nt":
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        ntdll = ctypes.windll.ntdll
+        handle = kernel32.OpenProcess(0x1F0FFF, False, pid)
+        if handle:
+            ntdll.NtResumeProcess(handle)
+            kernel32.CloseHandle(handle)
+    else:
+        os.kill(pid, signal.SIGCONT)
+
+
+def _kill_pid(pid: int):
+    if os.name == "nt":
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(0x0001, False, pid)
+        if handle:
+            kernel32.TerminateProcess(handle, 1)
+            kernel32.CloseHandle(handle)
+        else:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                pass
+    else:
+        os.kill(pid, signal.SIGKILL)
 
 
 def kill(region: str, mode: str, backend: str, force_both: bool, mock: bool):
@@ -96,7 +151,10 @@ def kill(region: str, mode: str, backend: str, force_both: bool, mock: bool):
         # netblock: SIGSTOP -> TCP handshake vẫn xong nhưng không ai trả lời => request TREO
         #           (đúng hành vi của iptables DROP ở tầng app)
         # stop    : SIGKILL -> cổng đóng => ConnectError ngay
-        os.kill(pid, signal.SIGSTOP if mode == "netblock" else signal.SIGKILL)
+        if mode == "netblock":
+            _suspend_pid(pid)
+        else:
+            _kill_pid(pid)
     else:
         svc = f"serving-{region}"
         if mode == "stop":
@@ -111,7 +169,7 @@ def restore(region: str, backend: str):
     if backend == "bare":
         pid = pid_of(region)
         if pid:
-            os.kill(pid, signal.SIGCONT)
+            _resume_pid(pid)
             return event(action="restore", region=region, method="SIGCONT", pid=pid)
         return event(action="restore", region=region, method="need_manual_start",
                      note="process da bi SIGKILL, chay `make up-bare` lai")

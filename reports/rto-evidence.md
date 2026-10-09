@@ -1,40 +1,40 @@
-# RTO/RPO Evidence — Lab 23 (TEMPLATE — sinh viên điền bằng SỐ CỦA MÌNH)
+# RTO/RPO Evidence - Lab 23
 
-Quy tắc duy nhất: mỗi con số ở đây phải trỏ được về **một dòng log thật**
-(`đường/dẫn.jsonl:số_dòng`). `pytest tests/test_rto_evidence.py` sẽ mở từng file ra kiểm tra.
-Con số không có evidence = trượt, bất kể các phần khác.
+Quy tac duy nhat: moi con so o day phai tro duoc ve mot dong log that
+(duong/dan.jsonl:so_dong). pytest tests/test_rto_evidence.py se mo tung file ra kiem tra.
+Con so khong co evidence = truot, bat ke cac phan khac.
 
-## 1. Drill 1 — không có DR (baseline)
+## 1. Drill 1 - khong co DR (baseline)
 
-| Chỉ số | Giá trị | Cách đo | Evidence |
+| Chi so | Gia tri | Cach do | Evidence |
 |---|---|---|---|
-| t_outage | `<iso>` | chaos kill | `chaos/chaos-events.jsonl:1` |
-| Request fail đầu tiên | `+__s` | dòng `ok:false` đầu tiên sau t_outage | `reports/drill-1-nodr.jsonl:__` |
-| Request thành công sau đó | không có | không có dòng `ok:true` nào sau t_outage | `reports/measure-drill-1.json` |
-| RTO | `NO_RECOVERY` | `tools/measure_rto.py` | `reports/measure-drill-1.json` |
+| t_outage | `2026-10-09T04:33:26` | chaos kill | `chaos/chaos-events.jsonl:1` |
+| Request fail dau tien | `+0.2s` | dong ok:false dau tien sau t_outage | `reports/drill-1-nodr.jsonl:18` |
+| Request thanh cong sau do | khong co | khong co dong ok:true nao sau t_outage | `reports/measure-drill-1.json` |
+| RTO | `NO_RECOVERY` | tools/measure_rto.py | `reports/measure-drill-1.json` |
 
-## 2. Drill 2 — có DR
+## 2. Drill 2 - co DR
 
-| Mốc | +giây từ t_outage | Cách đo | Evidence |
+| Moc | +giay tu t_outage | Cach do | Evidence |
 |---|---|---|---|
-| t_outage (mốc 0) | 0 | `action:kill` | `chaos/chaos-events.jsonl:__` |
-| User thấy lỗi đầu tiên | | dòng `ok:false` đầu | `reports/drill-2-withdr.jsonl:__` |
-| Health check phát hiện | | `to:UNHEALTHY, region:a` | `reports/health-events.jsonl:__` |
-| Snapshot restore xong | | `step:2_restore_snapshot` | `reports/failover-events.jsonl:__` |
-| Region phụ ready | | `step:4_wait_ready` | `reports/failover-events.jsonl:__` |
-| DNS cutover | | `step:5_dns_cutover` | `reports/failover-events.jsonl:__` |
-| **RTO đo được** | | dòng `ok:true` đầu sau lỗi | `reports/drill-2-withdr.jsonl:__` |
+| t_outage (moc 0) | 0 | action:kill | `chaos/chaos-events.jsonl:3` |
+| User thay loi dau tien | +0.4s | dong ok:false dau | `reports/drill-2-withdr.jsonl:27` |
+| Health check phat hien | +14.5s | to:UNHEALTHY, region:a | `reports/health-events.jsonl:2` |
+| Snapshot restore xong | +16.6s | step:2_restore_snapshot | `reports/failover-events.jsonl:2` |
+| Region phu ready | +22.8s | step:4_wait_ready | `reports/failover-events.jsonl:4` |
+| DNS cutover | +22.8s | step:5_dns_cutover | `reports/failover-events.jsonl:5` |
+| **RTO do duoc** | +26.7s | dong ok:true dau sau loi | `reports/drill-2-withdr.jsonl:40` |
 
-| Chỉ số | Đo được | Mục tiêu (slide §1) | Verdict |
+| Chi so | Do duoc | Muc tieu (slide 1) | Verdict |
 |---|---|---|---|
-| RTO — Inference API | `__s` | 300s (5 phút) | |
-| RPO — Vector DB | `__s` / `__` doc | 300s (5 phút) | |
+| RTO - Inference API | `26.7s` | 300s (5 phut) | PASS |
+| RPO - Vector DB | `4.0s` / `2` doc | 300s (5 phut) | PASS |
 
-## 3. RTO của tôi gồm những gì (bắt buộc — đây là phần chấm điểm hiểu bài)
+## 3. RTO cua toi gom nhung gi (bat buoc - day la phan cham diem hieu bai)
 
-| Thành phần | Giây | Nó đến từ đâu | Giảm được bằng cách nào |
+| Thanh phan | Giay | No den tu dau | Giam duoc bang cach nao |
 |---|---|---|---|
-| Health-check detect floor | | `interval_s × threshold` trong `reports/health-events.jsonl:__` | |
-| Snapshot restore | | 2_restore → 3_scale | |
-| GPU pool warm-up | | `waited_s` ở `4_wait_ready` | |
-| DNS/LB TTL cache | | t_recovered − t_cutover | |
+| Health-check detect floor | 15.0s | interval_s * threshold trong `reports/health-events.jsonl:2` | Giam interval xuong 2s hoac threshold xuong 2 (doi lai tang nguy co flapping) |
+| Snapshot restore | 2.1s | 2_restore_snapshot trong `reports/failover-events.jsonl:2` (t_restore 16.6s - t_detect 14.5s) | Dung CDC streaming replication hoac luu snapshot tren NVMe/S3 da vung |
+| GPU pool warm-up | 6.2s | waited_s o 4_wait_ready trong `reports/failover-events.jsonl:4` | Dung hot standby (scale full san) hoac pre-warm model weights |
+| DNS/LB TTL cache | 3.9s | t_recovered - t_cutover (`reports/drill-2-withdr.jsonl:40` - `reports/failover-events.jsonl:5`) | Giam DNS TTL xuong 1s hoac dung Anycast IP routing / Layer 4 Load Balancer |
