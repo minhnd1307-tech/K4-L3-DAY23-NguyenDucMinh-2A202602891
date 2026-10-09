@@ -121,6 +121,15 @@ def run(primary: str, target: str, backend: str, auto: bool) -> dict:
     step(1, "xac_nhan_outage", primary=primary, primary_down=prim_dead,
          target=target, target_alive=target_alive)
 
+    # Chặn failover nếu primary vẫn sống hoặc target không phản hồi
+    if not prim_dead:
+        return {"ok": False, "aborted": True,
+                "error": f"Region chinh ({primary}) van dang hoat dong binh thuong, huy failover"}
+
+    if not target_alive:
+        return {"ok": False, "aborted": True,
+                "error": f"Region phu ({target}) khong alive, huy failover de tranh double outage"}
+
     # Bước 2: Thông báo incident & xác nhận
     t_operator = time.time()
     operator_latency = round(t_operator - t_outage, 2) if t_outage else 0.0
@@ -167,6 +176,17 @@ def run(primary: str, target: str, backend: str, auto: bool) -> dict:
     p95 = latencies[int(len(latencies) * 0.95)] if latencies else 0.0
     err_rate = round(errors / 10.0, 2)
     step(6, "verify_golden_signals", total_requests=10, error_rate=err_rate, p95_ms=p95)
+
+    if err_rate > 0.0:
+        return {
+            "ok": False,
+            "error": f"Golden signals verification failed: error_rate={err_rate*100:.1f}%, p95={p95}ms",
+            "primary": primary,
+            "target": target,
+            "elapsed_s": round(time.time() - t_start, 2),
+            "p95_latency_ms": p95,
+            "error_rate": err_rate,
+        }
 
     # Bước 7: Post incident
     elapsed = round(time.time() - t_start, 2)

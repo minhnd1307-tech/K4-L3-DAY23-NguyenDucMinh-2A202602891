@@ -34,7 +34,9 @@ Con so khong co evidence = truot, bat ke cac phan khac.
 
 | Thanh phan | Giay | No den tu dau | Giam duoc bang cach nao |
 |---|---|---|---|
-| Health-check detect floor | 15.0s | interval_s * threshold trong `reports/health-events.jsonl:2` | Giam interval xuong 2s hoac threshold xuong 2 (doi lai tang nguy co flapping) |
+| Health-check detection | 14.5s | `to:UNHEALTHY` trong `reports/health-events.jsonl:2` (floor ly thuyet interval 5s * threshold 3 = 15s; thuc te bat duoc tai +14.5s) | Giam interval xuong 2s hoac threshold xuong 2 (doi lai tang nguy co flapping) |
 | Snapshot restore | 2.1s | 2_restore_snapshot trong `reports/failover-events.jsonl:2` (t_restore 16.6s - t_detect 14.5s) | Dung CDC streaming replication hoac luu snapshot tren NVMe/S3 da vung |
 | GPU pool warm-up | 6.2s | waited_s o 4_wait_ready trong `reports/failover-events.jsonl:4` | Dung hot standby (scale full san) hoac pre-warm model weights |
 | DNS/LB TTL cache | 3.9s | t_recovered - t_cutover (`reports/drill-2-withdr.jsonl:40` - `reports/failover-events.jsonl:5`) | Giam DNS TTL xuong 1s hoac dung Anycast IP routing / Layer 4 Load Balancer |
+
+Tong cong 4 thanh phan: 14.5s + 2.1s + 6.2s + 3.9s = **26.7s** (khop 100% voi RTO do duoc 26.7s).
